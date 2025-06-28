@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Axiom Calling Pro - Live Memecoin Scanner</title>
+
+  <!-- Solana web3 -->
+  <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
+
+  <!-- Chart.js for sparklines -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Poppins:wght@400;600&display=swap');
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin:0; background: #0a1a2b;
+      font-family: 'Poppins', sans-serif;
+      color: #eee;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 30px 20px;
+      user-select: none;
+    }
+    header {
+      font-family: 'Orbitron', monospace;
+      font-size: 2.8rem;
+      color: #00ffe7;
+      text-shadow: 0 0 15px #00ffe7cc;
+      margin-bottom: 30px;
+      user-select: text;
+    }
+    #connectBtn {
+      background: linear-gradient(90deg, #00ffe7, #0088aa);
+      color: #001f26;
+      font-weight: 700;
+      font-size: 1.3rem;
+      padding: 15px 40px;
+      border: none;
+      border-radius: 40px;
+      cursor: pointer;
+      box-shadow: 0 0 25px #00ffe7aa;
+      transition: background 0.4s ease, box-shadow 0.4s ease;
+      margin-bottom: 20px;
+      user-select: none;
+    }
+    #connectBtn:hover:not(:disabled) {
+      background: linear-gradient(90deg, #0088aa, #00ffe7);
+      box-shadow: 0 0 45px #00ffe7cc;
+    }
+    #walletAddress {
+      font-family: monospace;
+      font-size: 1.1rem;
+      color: #00ffe7;
+      margin-bottom: 30px;
+      user-select: text;
+    }
+
+    #coinsGrid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit,minmax(260px,1fr));
+      gap: 24px;
+      width: 100%;
+      max-width: 1200px;
+    }
+    .coinCard {
+      background: #112233dd;
+      border-radius: 15px;
+      padding: 20px;
+      box-shadow: 0 0 15px #00ffe7aa;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      cursor: default;
+    }
+    .coinCard:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 0 30px #00fffebf;
+    }
+    .coinLogo {
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      margin-bottom: 15px;
+      box-shadow: 0 0 15px #00ffe7aa;
+      user-select: none;
+    }
+    .coinName {
+      font-weight: 600;
+      font-size: 1.3rem;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      color: #00ffe7;
+      user-select: text;
+    }
+    .coinSymbol {
+      color: #66ffddcc;
+      font-weight: 500;
+      margin-bottom: 10px;
+      user-select: text;
+    }
+    .coinPrice {
+      font-weight: 700;
+      font-size: 1.2rem;
+      margin-bottom: 6px;
+      user-select: text;
+    }
+    .priceChange {
+      font-weight: 600;
+      margin-bottom: 12px;
+      user-select: text;
+    }
+    .priceChange.positive {
+      color: #32ff7e;
+      text-shadow: 0 0 8px #32ff7e99;
+    }
+    .priceChange.negative {
+      color: #ff5e57;
+      text-shadow: 0 0 8px #ff5e5799;
+    }
+    canvas.sparkline {
+      width: 100% !important;
+      height: 40px !important;
+      user-select: none;
+    }
+
+    /* Responsive */
+    @media (max-width: 480px) {
+      header {
+        font-size: 2rem;
+      }
+      #connectBtn {
+        font-size: 1.1rem;
+        padding: 12px 30px;
+      }
+      .coinCard {
+        padding: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<header>Axiom Calling Pro</header>
+
+<button id="connectBtn" type="button">Get access to 100x calls</button>
+<div id="walletAddress" role="status" aria-live="polite"></div>
+
+<div id="coinsGrid" aria-label="Memecoin price scanner">
+  <!-- Coin cards will go here -->
+</div>
+
+<script>
+  const connectBtn = document.getElementById("connectBtn");
+  const walletAddressDiv = document.getElementById("walletAddress");
+  const coinsGrid = document.getElementById("coinsGrid");
+
+  // Redirect button to Discord
+  connectBtn.addEventListener("click", () => {
+    window.location.href = "https://discord.gg/EQeJdQaK";
+  });
+
+  // List of memecoins on CoinGecko (IDs)
+  const memecoinIds = [
+    "dogecoin",
+    "shiba-inu",
+    "floki-inu",
+    "baby-doge-coin",
+    "safemoon",
+    "akita-inu",
+    "dogelon-mars",
+    "elon-musk-doge",
+    "baby-shiba",
+    "cumrocket"
+  ];
+
+  // Store Chart.js chart instances so we can update them
+  const charts = {};
+
+  // Fetch price and sparkline data from CoinGecko for each coin
+  async function fetchCoinData() {
+    const idsParam = memecoinIds.join(",");
+    const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${idsParam}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      return data;
+    } catch (e) {
+      console.error("Failed to fetch CoinGecko data", e);
+      return [];
+    }
+  }
+
+  // Create and update coin cards
+  function updateCoins(data) {
+    coinsGrid.innerHTML = ""; // Clear old cards
+    data.forEach((coin, idx) => {
+      // Create card container
+      const card = document.createElement("div");
+      card.className = "coinCard";
+
+      // Logo
+      const logo = document.createElement("img");
+      logo.className = "coinLogo";
+      logo.src = coin.image;
+      logo.alt = coin.name + " logo";
+      card.appendChild(logo);
+
+      // Name & Symbol
+      const name = document.createElement("div");
+      name.className = "coinName";
+      name.textContent = coin.name;
+      card.appendChild(name);
+
+      const symbol = document.createElement("div");
+      symbol.className = "coinSymbol";
+      symbol.textContent = coin.symbol.toUpperCase();
+      card.appendChild(symbol);
+
+      // Price
+      const price = document.createElement("div");
+      price.className = "coinPrice";
+      price.textContent = "$" + coin.current_price.toFixed(6);
+      card.appendChild(price);
+
+      // 24h change
+      const change = document.createElement("div");
+      change.className = "priceChange " + (coin.price_change_percentage_24h >= 0 ? "positive" : "negative");
+      change.textContent = (coin.price_change_percentage_24h >= 0 ? "+" : "") + coin.price_change_percentage_24h.toFixed(2) + "%";
+      card.appendChild(change);
+
+      // Sparkline canvas
+      const canvas = document.createElement("canvas");
+      canvas.className = "sparkline";
+      canvas.id = `sparkline-${idx}`;
+      card.appendChild(canvas);
+
+      coinsGrid.appendChild(card);
+
+      // Setup Chart.js sparkline
+      const ctx = canvas.getContext('2d');
+      if (charts[canvas.id]) {
+        charts[canvas.id].data.datasets[0].data = coin.sparkline_in_7d.price;
+        charts[canvas.id].update();
+      } else {
+        charts[canvas.id] = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: coin.sparkline_in_7d.price.map((_, i) => i),
+            datasets: [{
+              data: coin.sparkline_in_7d.price,
+              borderColor: coin.price_change_percentage_24h >= 0 ? '#32ff7e' : '#ff5e57',
+              backgroundColor: 'rgba(0,0,0,0)',
+              borderWidth: 2,
+              tension: 0.3,
+              pointRadius: 0,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            elements: {
+              line: { borderCapStyle: 'round' }
+            },
+            scales: {
+              x: { display: false },
+              y: { display: false }
+            },
+            plugins: {
+              legend: { display: false },
+              tooltip: { enabled: false }
+            }
+          }
+        });
+      }
+    });
+  }
+
+  // Initial load + auto-refresh every 30 seconds
+  async function loadAndRefresh() {
+    const coinData = await fetchCoinData();
+    updateCoins(coinData);
+  }
+
+  loadAndRefresh();
+  setInterval(loadAndRefresh, 30000);
+</script>
+</body>
+</html>
